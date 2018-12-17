@@ -1,152 +1,67 @@
-## Golang Streaming Server ##
+Dorsvr Streaming Server
+=======================
 
-[![Build Status](https://travis-ci.org/djwackey/dorsvr.svg?branch=master)](https://travis-ci.org/djwackey/dorsvr) [![GitHub issues](https://img.shields.io/github/issues/djwackey/dorsvr.svg)](https://github.com/djwackey/dorsvr/issues)
-### Modules ###
-* DorMediaPlayer   - media player
-* DorMediaServer   - media server
-* GroupSock        - group socket
-* LiveMedia        - live  media
-* UsageEnvironment - usage environment
+[![Build Status](https://travis-ci.org/djwackey/dorsvr.svg?branch=master)](https://travis-ci.org/djwackey/dorsvr)
+[![Go Report Card](https://goreportcard.com/badge/github.com/djwackey/dorsvr)](https://goreportcard.com/report/github.com/djwackey/dorsvr)
+[![GitHub issues](https://img.shields.io/github/issues/djwackey/dorsvr.svg)](https://github.com/djwackey/dorsvr/issues)
+## Modules
+ * rtspserver - rtsp server
+ * rtspclient - rtsp client
+ * groupsock  - group socket
+ * livemedia  - media library
 
-### Compile And Build ###
-	$ make
-### Format ###
-	$ make fmt
-### Testing ###
-	$ make test
-### Inheritance ###
-ServerMediaSubSession <- OnDemandServerMediaSubSession <- FileServerMediaSubSession <- H264FileMediaSubSession
+## Feature
+ * Streaming Video (H264, M2TS)
+ * Streaming Audio (MP3)
+ * Protocols: RTP, RTCP, RTSP
+ * Access Control
 
-FramedSource <- FramedFilter <- MPEGVideoStreamFramer <- H264VideoStreamFramer
-             <- FramedFileSource <- ByteStreamFileSource
+## Install
+    go get github.com/djwackey/dorsvr
 
-MediaSink <- RTPSink <- MultiFramedRTPSink <- VideoRTPSink <- H264VideoRTPSink
+## Format
+    $ make fmt
 
-### Real-Time Streaming Protocol ###
-The Real-Time Streaming Protocol allows to control multimedia streams delivered, for example, via RTP. Control includes absolute positioning within the media stream, recording and possibly device control.
-#### OPTIONS ####
-**Client -> Server**
+## Testing
+    $ make test
 
-	OPTIONS rtsp://192.168.1.105/stream.ts RTSP/1.0
-	CSeq: 1
-	User-Agent: LibVLC/2.1.2 (Dor Streaming Media v2016.06.05)
-**Server -> Client**
+## Example
+```golang
+import (
+    "fmt"
 
-	RTSP/1.0 200 OK
-    CSeq: 1
-    Public: DESCRIBE, SETUP, TEARDOWN, PLAY, PAUSE
+    "github.com/djwackey/dorsvr/rtspserver"
+)
 
-#### DESCRIBE ####
-**Client -> Server**
+func main() {
+    server := rtspserver.New(nil)
 
-	DESCRIBE rtsp://192.168.1.105:8554/test.264 RTSP/1.0
-	CSeq: 2
-    Accept: application/sdp
-    User-Agent: LibVLC/2.1.2 (Dor Streaming Media v2016.06.05)
-**Server -> Client**
+    portNum := 8554
+    err := server.Listen(portNum)
+    if err != nil {
+        fmt.Printf("Failed to bind port: %d\n", portNum)
+        return
+    }
 
-	RTSP/1.0 200 OK
-	CSeq: 2
-	Date: Sat, May 28 2016 15:48:13 GMT
-	Content-Base: rtsp://192.168.1.105:8554/test.264/
-	Content-Type: application/sdp
-	Content-Length: 398
+    if !server.SetupTunnelingOverHTTP(80) ||
+        !server.SetupTunnelingOverHTTP(8000) ||
+        !server.SetupTunnelingOverHTTP(8080) {
+        fmt.Printf("We use port %d for optional RTSP-over-HTTP tunneling, "+
+                   "or for HTTP live streaming (for indexed Transport Stream files only).\n", server.HTTPServerPortNum())
+    } else {
+        fmt.Println("(RTSP-over-HTTP tunneling is not available.)")
+    }
 
-	v=0
-	o=- 1464450493310666 1 IN IP4 192.168.1.105
-	s=H.264 Video, streamed by the Dor Media Server
-	i=test.264
-	t=0 0
-	a=tool:Dor Streaming Media v2012.10.01
-	a=type:broadcast
-	a=control:*
-	a=range:npt=0-
-	a=x-qt-text-nam:H.264 Video, streamed by the Dor Media Server
-	a=x-qt-text-inf:test.264
-	m=video 0 RTP/AVP 96
-	c=IN IP4 0.0.0.0
-	b=AS:500
-	a=rtpmap:96 H264/90000
-	a=control:track1
+    urlPrefix := server.RtspURLPrefix()
+    fmt.Println("This server's URL: " + urlPrefix + "<filename>.")
 
-### SETUP ###
-**Client -> Server**
+    server.Start()
 
-	SETUP rtsp://192.168.1.105:8554/test.264/track1 RTSP/1.0
-	CSeq: 3
-	User-Agent: dorsvr (Dor Streaming Media v1.0.0.3)
-	Transport: RTP/AVP;unicast;client_port=37175-37176
+    select {}
+}
+```
+## Author
+djwackey, worcy_kiddy@126.com
 
-**Server -> Client**
-
-	RTSP/1.0 200 OK
-	CSeq: 3
-	Date: Tue, Oct 18 2016 06:43:05 GMT
-	Transport: RTP/AVP;unicast;destination=192.168.1.105;source=192.168.1.105;client_port=37175-37176;server_port=6970-6971
-	Session: E1155C20
-
-### PLAY ###
-**Client -> Server**
-
-	PLAY rtsp://192.168.1.105:8554/test.264/ RTSP/1.0
-	CSeq: 4
-	User-Agent: dorsvr (Dor Streaming Media v1.0.0.3)
-	Session: E1155C20
-	Range: npt=0.000-
-
-**Server -> Client**
-
-	RTSP/1.0 200 OK
-	CSeq: 4
-	Date: Tue, Oct 18 2016 06:43:05 GMT
-	Range: npt=0.000-
-	Session: E1155C20
-	RTP-Info: url=rtsp://192.168.1.105:8554/test.264/track1;seq=40260;rtptime=3619422277
-
-### PAUSE ###
-**Client -> Server**
-
-	PAUSE rtsp://192.168.1.105:8554/test.264 RTSP/1.0
-	CSeq: 5
-    Session: E1155C20
-
-**Server -> Client**
-
-	RTSP/1.0 200 OK
-    CSeq: 5
-	Session: E1155C20
-
-### TEARDOWN ###
-**Client -> Server**
-
-	TEARDOWN rtsp://192.168.1.105:8554/test.264 RTSP/1.0
-	CSeq: 6
-	Session: E1155C20
-	User-Agent: VLC media player (LIVE555 Streaming Media v2005.11.10)
-
-**Server -> Client**
-
-	RTSP/1.0 200 OK
-	CSeq: 6
-	Session: E1155C20
-	Connection: Close
-
-### SET_PARAMETER ###
-**Client -> Server**
-
-**Server -> Client**
-
-### GET_PARAMETER ###
-**Client -> Server**
-
-**Server -> Client**
-
-### ANNOUNCD ###
-**Client -> Server**
-
-**Server -> Client**
-
-### RECORD ###
-**Client -> Server**
-
-**Server -> Client**
+## LICENSE
+dorsvr is licensed under the GNU Lesser General Public License, Version 2.1. See [LICENSE](https://github.com/djwackey/dorsvr/blob/master/LICENSE) for the full license text.
